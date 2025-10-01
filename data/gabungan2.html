@@ -1,0 +1,795 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Alarm Timer System v2.0</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    /* ===== COMMON ===== */
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 10px;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      background: rgba(255,255,255,0.95);
+      border-radius: 15px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+      overflow: hidden;
+    }
+    .header {
+      background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+      color: white;
+      padding: 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .header h2 { margin: 0; font-size: clamp(18px, 4vw, 24px); }
+    .version-info { font-size: 12px; opacity: 0.8; }
+    .settings-btn, .btn-back {
+      background: #3498db; color: white; border: none; padding: 10px 15px;
+      border-radius: 5px; cursor: pointer; font-size: 14px; text-decoration: none;
+      display: inline-block; transition: all 0.3s;
+    }
+    .settings-btn:hover, .btn-back:hover { background: #2980b9; transform: translateY(-2px); }
+
+    /* ===== STATUS BAR & TABLE (MAIN) ===== */
+    .status-bar { background: #ecf0f1; padding: 15px 20px; display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; }
+    .connection-status { display:flex; align-items:center; gap:8px; }
+    .status-dot { width:10px; height:10px; border-radius:50%; background:#27ae60; animation:pulse 2s infinite; box-shadow:0 0 10px rgba(39,174,96,0.5); }
+    .status-dot.offline { background:#e74c3c; animation:none; box-shadow:0 0 10px rgba(231,76,60,0.5); }
+    .system-info { font-size:12px; opacity:0.8; }
+    .table-container { overflow-x:auto; padding:20px; }
+    table { width:100%; border-collapse:collapse; min-width:700px; background:white; border-radius:8px; overflow:hidden; box-shadow:0 4px 15px rgba(0,0,0,0.1); }
+    th, td { padding:15px 10px; text-align:center; border-bottom:1px solid #eee; vertical-align:middle; }
+    th { background: linear-gradient(135deg,#34495e 0%,#2c3e50 100%); color:white; font-weight:600; position:sticky; top:0; z-index:10; }
+    tr:nth-child(even) { background:#f8f9fa; }
+    tr:hover { background:#e3f2fd; transform:scale(1.01); transition:all .2s; }
+    button { padding:8px 12px; font-size:12px; border:none; border-radius:6px; cursor:pointer; font-weight:bold; transition:all .3s; margin:2px; min-width:65px; position:relative; overflow:hidden; }
+    button:disabled { opacity:.6; cursor:not-allowed; transform:none !important; }
+    button:hover:not(:disabled) { transform:translateY(-2px); box-shadow:0 4px 8px rgba(0,0,0,0.2); }
+
+    .btn-start { background: linear-gradient(135deg,#27ae60 0%,#2ecc71 100%); color:white; }
+    .btn-stop  { background: linear-gradient(135deg,#e74c3c 0%,#c0392b 100%); color:white; }
+    .btn-alarm { background: linear-gradient(135deg,#f39c12 0%,#e67e22 100%); color:white; }
+    .btn-alarm.active { background: linear-gradient(135deg,#e74c3c 0%,#c0392b 100%); animation:pulse 1s infinite; }
+
+    select { padding:8px 12px; font-size:14px; border:2px solid #ddd; border-radius:6px; background:white; min-width:120px; cursor:pointer; transition:all .3s; }
+    select:focus { border-color:#3498db; outline:none; box-shadow:0 0 5px rgba(52,152,219,0.3); }
+
+    .status-idle { color:#7f8c8d; font-weight:bold; }
+    .status-running { color:#27ae60; font-weight:bold; animation:pulse 2s infinite; }
+    .status-warning { color:#f39c12; font-weight:bold; animation:pulse 1s infinite; text-shadow:0 0 10px rgba(243,156,18,0.5); }
+    .status-finished { color:#e74c3c; font-weight:bold; animation:blink 1s infinite; text-shadow:0 0 10px rgba(231,76,60,0.5); }
+
+    .timer-display { font-family:'Courier New', monospace; font-size:18px; font-weight:bold; color:#2c3e50; min-width:90px; padding:8px; background:#f8f9fa; border-radius:4px; display:inline-block; }
+    .timer-warning { color:#f39c12 !important; background:#fff3cd !important; animation:pulse 1s infinite; }
+    .timer-finished { color:#e74c3c !important; background:#f8d7da !important; animation:blink 1s infinite; }
+
+    /* spinner and toast */
+    .spinner { border:2px solid #f3f3f3; border-top:2px solid #3498db; border-radius:50%; width:16px; height:16px; animation:spin 1s linear infinite; display:inline-block; margin-left:8px; vertical-align:middle; }
+    .toast { position:fixed; top:20px; right:20px; padding:15px 20px; border-radius:8px; color:white; font-weight:bold; z-index:1000; opacity:0; transform:translateX(100%); transition:all .4s ease; max-width:350px; word-wrap:break-word; }
+    .toast.show { opacity:1; transform:translateX(0); }
+    .toast.success { background: linear-gradient(135deg,#27ae60 0%,#2ecc71 100%); box-shadow:0 4px 15px rgba(39,174,96,0.3); }
+    .toast.error   { background: linear-gradient(135deg,#e74c3c 0%,#c0392b 100%); box-shadow:0 4px 15px rgba(231,76,60,0.3); }
+    .toast.warning { background: linear-gradient(135deg,#f39c12 0%,#e67e22 100%); box-shadow:0 4px 15px rgba(243,156,18,0.3); }
+
+    /* ===== SETTINGS STYLES ===== */
+    .content { padding:20px; }
+    .section { border:2px solid #ecf0f1; border-radius:12px; padding:20px; margin-bottom:20px; background:#ffffff; box-shadow:0 2px 10px rgba(0,0,0,0.1); transition:all .3s ease; }
+    .section:hover { box-shadow:0 4px 20px rgba(0,0,0,0.12); transform:translateY(-2px); }
+    .section h3 { color:#2c3e50; margin-bottom:12px; border-bottom:3px solid #3498db; padding-bottom:6px; font-size:18px; }
+    .form-group { margin-bottom:12px; display:flex; align-items:center; justify-content:space-between; gap:12px; }
+    .form-group label { font-weight:600; color:#2c3e50; font-size:14px; flex:1; }
+    .form-group .desc { font-size:12px; color:#7f8c8d; display:block; margin-top:4px; font-weight:normal; }
+    input[type="number"], input[type="password"], input[type="text"] { padding:8px 12px; border:2px solid #ddd; border-radius:6px; font-size:14px; width:160px; }
+    input[type="checkbox"] { width:16px; height:16px; }
+    .btn-save { background: linear-gradient(135deg,#27ae60 0%,#2ecc71 100%); color:white; padding:12px 20px; border-radius:8px; font-size:14px; font-weight:bold; cursor:pointer; }
+    .btn-test { background: linear-gradient(135deg,#f39c12 0%,#e67e22 100%); color:white; padding:10px 20px; border-radius:6px; font-size:14px; }
+
+    .info { background: linear-gradient(135deg,#e8f6f3 0%,#d5edf6 100%); border-left:4px solid #27ae60; padding:20px; margin:20px 0; border-radius:8px; box-shadow:0 2px 10px rgba(0,0,0,0.1); }
+    .actions { text-align:center; margin-top:20px; padding-top:12px; border-top:2px solid #ecf0f1; }
+
+    /* Animations & responsive */
+    @keyframes blink { 0%,50%{opacity:1} 51%,100%{opacity:0.3} }
+    @keyframes pulse { 0%{transform:scale(1)} 50%{transform:scale(1.05)} 100%{transform:scale(1)} }
+    @keyframes spin { 0%{transform:rotate(0deg)} 100%{transform:rotate(360deg)} }
+    @media (max-width:768px) { .form-group{flex-direction:column;align-items:flex-start;} table{min-width:600px;} }
+    @media (max-width:480px) { .header{padding:12px;} .container{margin:6px;} .toast{right:10px;left:10px;} }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- HEADER -->
+    <div class="header">
+      <div>
+        <h2>ALARM TIMER SYSTEM</h2>
+        <div class="version-info">v2.0 - jIE  Edition</div>
+      </div>
+      <div>
+        <button class="settings-btn" id="openSettingsBtn">⚙️ PENGATURAN ALARM</button>
+      </div>
+    </div>
+
+    <!-- MAIN PAGE -->
+    <div id="mainPage">
+      <div class="status-bar">
+        <div class="connection-status">
+          <div class="status-dot" id="connectionDot"></div>
+          <span id="connectionText">Terhubung</span>
+          <span id="clientCount" class="system-info"></span>
+        </div>
+        <div>
+          <span id="lastUpdate" class="system-info">Menunggu data...</span>
+          <span id="systemInfo" class="system-info"></span>
+        </div>
+      </div>
+
+      <div class="table-container">
+        <table id="timerTable">
+          <thead>
+            <tr>
+              <th>Lapangan</th>
+			  <th>Status</th>
+			  <th>Countdown</th>
+			  <th>Durasi</th>
+               <th>Aksi</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Field 1</strong></td>
+              <td><span id="status1" class="status-idle">Idle</span></td>
+              <td><span id="timer1" class="timer-display">--:--:--</span></td>
+              <td>
+                <select id="durasi1">
+                  <option value="1800">30 Menit</option>
+                  <option value="3600" selected>60 Menit</option>
+                  <option value="5400">90 Menit</option>
+                  <option value="7200">120 Menit</option>
+                </select>
+              </td>
+              <td>
+                <button class="btn-start" onclick="startTimer(1)" id="startBtn1">START</button>
+                <button class="btn-stop" onclick="stopTimer(1)" id="stopBtn1">STOP</button>
+                <button class="btn-alarm" onclick="testAlarm(1)" id="alarmBtn1">TEST</button>
+              </td>
+            </tr>
+
+            <tr>
+              <td><strong>Field 2</strong></td>
+              <td><span id="status2" class="status-idle">Idle</span></td>
+              <td><span id="timer2" class="timer-display">--:--:--</span></td>
+              <td>
+                <select id="durasi2">
+                  <option value="1800">30 Menit</option>
+                  <option value="3600" selected>60 Menit</option>
+                  <option value="5400">90 Menit</option>
+                </select>
+              </td>
+              <td>
+                <button class="btn-start" onclick="startTimer(2)" id="startBtn2">START</button>
+                <button class="btn-stop" onclick="stopTimer(2)" id="stopBtn2">STOP</button>
+                <button class="btn-alarm" onclick="testAlarm(2)" id="alarmBtn2">TEST</button>
+              </td>
+            </tr>
+
+            <tr>
+              <td><strong>Field 3</strong></td>
+              <td><span id="status3" class="status-idle">Idle</span></td>
+              <td><span id="timer3" class="timer-display">--:--:--</span></td>
+              <td>
+                <select id="durasi3">
+                  <option value="1800">30 Menit</option>
+                  <option value="3600" selected>60 Menit</option>
+                  <option value="5400">90 Menit</option>
+                </select>
+              </td>
+              <td>
+                <button class="btn-start" onclick="startTimer(3)" id="startBtn3">START</button>
+                <button class="btn-stop" onclick="stopTimer(3)" id="stopBtn3">STOP</button>
+                <button class="btn-alarm" onclick="testAlarm(3)" id="alarmBtn3">TEST</button>
+              </td>
+            </tr>
+
+            <tr>
+              <td><strong>Field 4</strong></td>
+              <td><span id="status4" class="status-idle">Idle</span></td>
+              <td><span id="timer4" class="timer-display">--:--:--</span></td>
+              <td>
+                <select id="durasi4">
+                  <option value="1800">30 Menit</option>
+                  <option value="3600" selected>60 Menit</option>
+                  <option value="5400">90 Menit</option>
+                </select>
+              </td>
+              <td>
+                <button class="btn-start" onclick="startTimer(4)" id="startBtn4">START</button>
+                <button class="btn-stop" onclick="stopTimer(4)" id="stopBtn4">STOP</button>
+                <button class="btn-alarm" onclick="testAlarm(4)" id="alarmBtn4">TEST</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div id="errorState" class="error-state" style="display:none; text-align:center; padding:30px; color:#e74c3c;">
+          <h3>⚠️ Koneksi Bermasalah</h3>
+          <p>Tidak dapat terhubung ke sistem timer. Silakan periksa koneksi WiFi Anda.</p>
+          <button class="btn-back" style="margin-top:10px;" onclick="retryConnection()">🔄 Coba Lagi</button>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- SETTINGS PAGE -->
+    <div id="settingsPage" style="display:none;">
+      <div class="content">
+        <form id="configForm">
+          <div class="section">
+            <h3>⏰ Durasi Alarm (detik)</h3>
+            <div class="form-group">
+              <label for="testDuration">Test Alarm:
+                <span class="desc">Durasi saat tombol TEST ditekan</span>
+              </label>
+              <input type="number" id="testDuration" min="1" max="30" value="3" />
+            </div>
+            <div class="form-group">
+              <label for="warningDuration">Warning Alarm:
+                <span class="desc">Alarm peringatan sebelum waktu habis</span>
+              </label>
+              <input type="number" id="warningDuration" min="1" max="30" value="2" />
+            </div>
+            <div class="form-group">
+              <label for="timeupDuration">Time Up Alarm:
+                <span class="desc">Alarm ketika waktu habis</span>
+              </label>
+              <input type="number" id="timeupDuration" min="1" max="60" value="8" />
+            </div>
+
+            <div style="margin-top:12px;">
+              <button type="button" class="btn-test" id="testAllBtn" onclick="testAllAlarms()">TEST SEMUA ALARM</button>
+            </div>
+          </div>
+
+          <div class="section">
+            <h3>⚠️ Pengaturan Warning</h3>
+            <div class="form-group">
+              <label for="warningTime">Warning Time:
+                <span class="desc">Peringatan berapa detik sebelum habis</span>
+              </label>
+              <select id="warningTime">
+                <option value="60">1 Menit</option>
+                <option value="180">3 Menit</option>
+                <option value="300" selected>5 Menit</option>
+                <option value="600">10 Menit</option>
+                <option value="900">15 Menit</option>
+                <option value="1200">20 Menit</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Aktifkan Warning Alarm:
+                <span class="desc">Bunyi peringatan sebelum waktu habis</span>
+              </label>
+              <div style="display:flex; align-items:center; gap:12px;">
+                <input type="checkbox" id="enableWarning" checked />
+                <span>Aktif</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="section">
+            <h3>🔄 Pengaturan Repeat</h3>
+            <div class="form-group">
+              <label for="repeatCount">Jumlah Pengulangan:
+                <span class="desc">Berapa kali alarm berulang</span>
+              </label>
+              <select id="repeatCount">
+                <option value="1">1x</option><option value="2">2x</option><option value="3" selected>3x</option><option value="4">4x</option><option value="5">5x</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="repeatInterval">Jeda Antar Pengulangan:
+                <span class="desc">Interval waktu antar pengulangan</span>
+              </label>
+              <select id="repeatInterval">
+                <option value="1">1 detik</option><option value="2" selected>2 detik</option><option value="3">3 detik</option><option value="5">5 detik</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Aktifkan Repeat Alarm:
+                <span class="desc">Alarm berulang atau sekali saja</span>
+              </label>
+              <div style="display:flex; align-items:center; gap:12px;">
+                <input type="checkbox" id="enableRepeating" checked />
+                <span>Aktif</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- WIFI SECTION -->
+          <div class="section">
+            <h3>🌐 Pengaturan WiFi</h3>
+            <form id="wifi-form" method="POST" action="/wifi-save" onsubmit="return submitWiFiForm(event);">
+              <div class="form-group">
+                <label for="ssidSelect">Pilih Jaringan:</label>
+                <select name="ssid" id="ssidSelect"><option>Memuat...</option></select>
+              </div>
+              <div class="form-group">
+                <label for="wifiPass">Password:</label>
+                <input type="password" id="wifiPass" name="password" placeholder="Masukkan Password" />
+              </div>
+              <div class="form-group">
+                <label>
+                  <input type="checkbox" id="showPass" onclick="togglePassword()"> Tampilkan Password
+                </label>
+              </div>
+              <div style="margin-top:8px;">
+                <button type="submit" class="btn-save" id="saveWifiBtn">💾 SIMPAN WiFi</button>
+              </div>
+            </form>
+          </div>
+
+          <div class="info">
+            <strong>ℹ️ Informasi Penting:</strong>
+            <ul>
+              <li><strong>Test Alarm:</strong> Durasi saat klik tombol "TEST" pada halaman utama</li>
+              <li><strong>Warning Alarm:</strong> Alarm peringatan yang bunyi sebelum waktu habis</li>
+              <li><strong>Time Up Alarm:</strong> Alarm yang bunyi saat waktu benar-benar habis</li>
+              <li><strong>Repeat:</strong> Alarm akan berulang sesuai pengaturan</li>
+              <li><strong>GPIO Pins:</strong> Relay terpasang di GPIO 4, 5, 18, dan 19 (contoh)</li>
+              <li>Semua pengaturan akan tersimpan secara permanen di memori ESP32 (jika firmware mendukung)</li>
+            </ul>
+          </div>
+
+          <div class="actions">
+            <button type="button" class="btn-save" id="saveBtn" onclick="saveConfig()">💾 SIMPAN PENGATURAN</button>
+            <button type="button" class="btn-back" onclick="showMain()">🏠 KEMBALI KE UTAMA</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST -->
+  <div id="toast" class="toast"></div>
+
+  <script>
+    /************************************************************************
+     * Configuration and shared utilities (merged)
+     ************************************************************************/
+    const CONFIG = {
+      UPDATE_INTERVAL: 1000,
+      OFFLINE_INTERVAL: 5000,
+      REQUEST_TIMEOUT: 8000,
+      TOAST_DURATION: 4000,
+      MAX_RETRY_ATTEMPTS: 3
+    };
+
+    let isOnline = true;
+    let updateInterval = null;
+    let retryCount = 0;
+    let systemData = {};
+    let configLoaded = false;
+
+    function showToast(message, type = 'success') {
+      const toast = document.getElementById('toast');
+      toast.textContent = message;
+      toast.className = `toast ${type} show`;
+      setTimeout(() => { toast.classList.remove('show'); }, CONFIG.TOAST_DURATION);
+    }
+
+    // fetch with timeout helper
+    async function fetchWithTimeout(url, options = {}) {
+      const timeout = options.timeout || CONFIG.REQUEST_TIMEOUT;
+      const controller = new AbortController();
+      const id = setTimeout(() => controller.abort(), timeout);
+      try {
+        const resp = await fetch(url, { ...options, signal: controller.signal });
+        clearTimeout(id);
+        return resp;
+      } catch (err) {
+        clearTimeout(id);
+        throw err;
+      }
+    }
+
+    /************************************************************************
+     * NAVIGATION (main <-> settings)
+     ************************************************************************/
+    const openSettingsBtn = document.getElementById('openSettingsBtn');
+    openSettingsBtn.addEventListener('click', showSettings);
+
+    function showSettings() {
+      document.getElementById('mainPage').style.display = 'none';
+      document.getElementById('settingsPage').style.display = 'block';
+      // load config & wifi list when opening settings
+      loadConfig();
+      loadWiFiList();
+    }
+    function showMain() {
+      document.getElementById('settingsPage').style.display = 'none';
+      document.getElementById('mainPage').style.display = 'block';
+    }
+
+    /************************************************************************
+     * MAIN: Update status / handle timers
+     ************************************************************************/
+    function updateConnectionStatus(online) {
+      const dot = document.getElementById('connectionDot');
+      const text = document.getElementById('connectionText');
+      const errorState = document.getElementById('errorState');
+      const timerTable = document.getElementById('timerTable');
+
+      if (online) {
+        dot.classList.remove('offline');
+        text.textContent = 'Terhubung';
+        errorState.style.display = 'none';
+        timerTable.style.display = 'table';
+        isOnline = true;
+        retryCount = 0;
+      } else {
+        dot.classList.add('offline');
+        text.textContent = 'Terputus';
+        if (retryCount >= CONFIG.MAX_RETRY_ATTEMPTS) {
+          errorState.style.display = 'block';
+          timerTable.style.display = 'none';
+        }
+        isOnline = false;
+      }
+    }
+
+    function updateLastUpdateTime() {
+      const now = new Date();
+      document.getElementById('lastUpdate').textContent = 'Update: ' + now.toLocaleTimeString('id-ID');
+    }
+
+    function updateSystemInfo() {
+      if (systemData.connectedClients !== undefined) {
+        document.getElementById('clientCount').textContent = `(${systemData.connectedClients} klien)`;
+      }
+      if (systemData.freeHeap) {
+        const freeHeapKB = Math.round(systemData.freeHeap / 1024);
+        document.getElementById('systemInfo').textContent = `| RAM: ${freeHeapKB}KB`;
+      }
+    }
+
+    function setButtonLoading(buttonId, loading) {
+      const btn = document.getElementById(buttonId);
+      if (!btn) return;
+      if (loading) {
+        btn.disabled = true;
+        btn.dataset._orig = btn.textContent;
+        btn.innerHTML = btn.dataset._orig + '<span class="spinner"></span>';
+      } else {
+        btn.disabled = false;
+        const orig = btn.dataset._orig || btn.textContent;
+        btn.textContent = orig;
+        delete btn.dataset._orig;
+      }
+    }
+
+    async function updateStatus() {
+      try {
+        const response = await fetchWithTimeout('/status');
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        updateConnectionStatus(true);
+        updateLastUpdateTime();
+
+        for (let i = 1; i <= 4; i++) {
+          const lap = data[`lapangan${i}`];
+          if (!lap) continue;
+          updateFieldDisplay(i, lap);
+        }
+
+        // system info
+        try {
+          const infoResp = await fetchWithTimeout('/info', { timeout: 4000 });
+          if (infoResp.ok) {
+            systemData = await infoResp.json();
+            updateSystemInfo();
+          }
+        } catch (e) { /* ignore */ }
+
+      } catch (error) {
+        retryCount++;
+        console.error(`Status update failed (attempt ${retryCount}):`, error.message || error);
+        if (retryCount >= CONFIG.MAX_RETRY_ATTEMPTS) {
+          updateConnectionStatus(false);
+          if (isOnline) showToast(`Koneksi gagal: ${error.message || error}`, 'error');
+        }
+      }
+    }
+
+    function updateFieldDisplay(fieldNum, data) {
+      const statusEl = document.getElementById(`status${fieldNum}`);
+      const timerEl = document.getElementById(`timer${fieldNum}`);
+      const startBtn = document.getElementById(`startBtn${fieldNum}`);
+      const stopBtn = document.getElementById(`stopBtn${fieldNum}`);
+
+      if (!statusEl || !timerEl) return;
+
+      statusEl.textContent = data.status || 'Unknown';
+      // map statusClass from backend to classes used
+      const cls = data.statusClass || 'idle';
+      statusEl.className = (cls === 'idle') ? 'status-idle' : (cls === 'running' ? 'status-running' : (cls === 'warning' ? 'status-warning' : (cls === 'finished' ? 'status-finished' : 'status-idle')));
+
+      timerEl.textContent = data.timeRemaining || '--:--:--';
+      timerEl.className = 'timer-display';
+      if (cls === 'warning') timerEl.classList.add('timer-warning');
+      if (cls === 'finished') timerEl.classList.add('timer-finished');
+
+      const isRunning = (cls === 'running' || cls === 'warning');
+      const isFinished = (cls === 'finished');
+
+      if (startBtn) startBtn.disabled = isRunning;
+      if (stopBtn) stopBtn.disabled = !isRunning && !isFinished;
+    }
+
+    function startAutoRefresh() {
+      if (updateInterval) clearInterval(updateInterval);
+      const interval = isOnline ? CONFIG.UPDATE_INTERVAL : CONFIG.OFFLINE_INTERVAL;
+      updateInterval = setInterval(updateStatus, interval);
+    }
+
+    // retry manual
+    function retryConnection() {
+      retryCount = 0;
+      updateConnectionStatus(true);
+      updateStatus();
+      showToast('Mencoba menghubung ulang...', 'warning');
+    }
+
+    // Timer control functions
+    async function startTimer(lapangan) {
+      const durasiEl = document.getElementById(`durasi${lapangan}`);
+      const buttonId = `startBtn${lapangan}`;
+      if (!durasiEl) { showToast('Element durasi tidak ditemukan', 'error'); return; }
+      const durasi = parseInt(durasiEl.value) || 0;
+      if (!durasi) { showToast('Durasi tidak valid', 'error'); return; }
+      setButtonLoading(buttonId, true);
+      try {
+        const resp = await fetchWithTimeout(`/start?lap=${lapangan-1}&durasi=${durasi}`);
+        if (!resp.ok) throw new Error(resp.statusText || `HTTP ${resp.status}`);
+        showToast(`Timer Field ${lapangan} dimulai (${Math.round(durasi/60)} menit)`, 'success');
+        await updateStatus();
+      } catch (err) {
+        console.error('Error starting timer:', err);
+        showToast(`Gagal memulai timer: ${err.message || err}`, 'error');
+      } finally {
+        setButtonLoading(buttonId, false);
+      }
+    }
+
+    async function stopTimer(lapangan) {
+      if (!confirm(`Yakin ingin menghentikan timer Field ${lapangan}?`)) return;
+      const buttonId = `stopBtn${lapangan}`;
+      setButtonLoading(buttonId, true);
+      try {
+        const resp = await fetchWithTimeout(`/stop?lap=${lapangan-1}`);
+        if (!resp.ok) throw new Error(resp.statusText || `HTTP ${resp.status}`);
+        showToast(`Timer Field ${lapangan} dihentikan`, 'warning');
+        await updateStatus();
+      } catch (err) {
+        console.error('Error stopping timer:', err);
+        showToast(`Gagal menghentikan timer: ${err.message || err}`, 'error');
+      } finally {
+        setButtonLoading(buttonId, false);
+      }
+    }
+
+    async function testAlarm(lapangan) {
+      const buttonId = `alarmBtn${lapangan}`;
+      const btn = document.getElementById(buttonId);
+      if (!btn) { showToast('Button tidak ditemukan', 'error'); return; }
+      btn.classList.add('active'); btn.disabled = true;
+      try {
+        const resp = await fetchWithTimeout(`/alarm?lap=${lapangan-1}`);
+        if (!resp.ok) throw new Error(resp.statusText || `HTTP ${resp.status}`);
+        showToast(`Test alarm Field ${lapangan} aktif`, 'success');
+      } catch (err) {
+        console.error('Error testing alarm:', err);
+        showToast(`Gagal test alarm: ${err.message || err}`, 'error');
+      } finally {
+        setTimeout(()=>{ btn.classList.remove('active'); btn.disabled=false; }, 3500);
+      }
+    }
+
+    /************************************************************************
+     * SETTINGS: load/save config & testAllAlarms (merged from settings.html)
+     ************************************************************************/
+    async function loadConfig() {
+      configLoaded = false;
+      // show loading? (ke simplifikasi)
+      try {
+        const resp = await fetchWithTimeout('/config');
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+        document.getElementById('testDuration').value = data.testDuration ?? 3;
+        document.getElementById('warningDuration').value = data.warningDuration ?? 2;
+        document.getElementById('timeupDuration').value = data.timeupDuration ?? 8;
+        document.getElementById('warningTime').value = data.warningTime ?? 300;
+        document.getElementById('repeatCount').value = data.repeatCount ?? 3;
+        document.getElementById('repeatInterval').value = data.repeatInterval ?? 2;
+        document.getElementById('enableWarning').checked = (data.enableWarning !== false);
+        document.getElementById('enableRepeating').checked = (data.enableRepeating !== false);
+        configLoaded = true;
+        showToast('Konfigurasi berhasil dimuat', 'success');
+      } catch (err) {
+        console.error('Error loading config:', err);
+        showToast(`Gagal memuat konfigurasi: ${err.message || err}`, 'error');
+      }
+    }
+
+    async function saveConfig() {
+      if (!configLoaded) { showToast('Tunggu hingga konfigurasi selesai dimuat', 'error'); return; }
+      const saveBtn = document.getElementById('saveBtn');
+      const original = saveBtn.textContent;
+      saveBtn.disabled = true; saveBtn.textContent = '💾 MENYIMPAN...';
+      try {
+        const config = {
+          testDuration: parseInt(document.getElementById('testDuration').value),
+          warningDuration: parseInt(document.getElementById('warningDuration').value),
+          timeupDuration: parseInt(document.getElementById('timeupDuration').value),
+          warningTime: parseInt(document.getElementById('warningTime').value),
+          repeatCount: parseInt(document.getElementById('repeatCount').value),
+          repeatInterval: parseInt(document.getElementById('repeatInterval').value),
+          enableWarning: document.getElementById('enableWarning').checked,
+          enableRepeating: document.getElementById('enableRepeating').checked
+        };
+
+        // basic validation
+        if (config.testDuration < 1 || config.testDuration > 30) throw new Error('Test duration harus 1-30 detik');
+        if (config.warningDuration < 1 || config.warningDuration > 30) throw new Error('Warning duration harus 1-30 detik');
+        if (config.timeupDuration < 1 || config.timeupDuration > 60) throw new Error('Time up duration harus 1-60 detik');
+        if (config.warningTime < 30 || config.warningTime > 1800) throw new Error('Warning time harus 30-1800 detik');
+
+        const resp = await fetchWithTimeout('/save-config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(config),
+          timeout: 10000
+        });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+
+        await resp.text(); // ignore body
+        showToast('🎉 Pengaturan berhasil disimpan!', 'success');
+      } catch (err) {
+        console.error('Error saving config:', err);
+        showToast(`❌ Gagal menyimpan: ${err.message || err}`, 'error');
+      } finally {
+        saveBtn.disabled = false; saveBtn.textContent = original;
+      }
+    }
+
+    async function testAllAlarms() {
+      const btn = document.getElementById('testAllBtn');
+      const original = btn.textContent;
+      btn.disabled = true; btn.textContent = '🔊 TESTING...';
+      try {
+        const promises = [];
+        for (let i = 0; i < 4; i++) {
+          promises.push(
+            fetchWithTimeout(`/alarm?lap=${i}`, { timeout: 5000 })
+              .then(r => ({ ok: r.ok })).catch(e => ({ error: true, message: e.message }))
+          );
+        }
+        const results = await Promise.all(promises);
+        const successCount = results.filter(r => r.ok).length;
+        const errorCount = results.length - successCount;
+        if (successCount === 4) showToast('🔊 Test alarm berhasil pada semua lapangan!', 'success');
+        else if (successCount > 0) showToast(`🔊 Test berhasil pada ${successCount}/4 lapangan. Error: ${errorCount}`, 'warning');
+        else showToast('❌ Test alarm gagal pada semua lapangan', 'error');
+      } catch (err) {
+        console.error('Error testing alarms:', err);
+        showToast(`❌ Test alarm gagal: ${err.message || err}`, 'error');
+      } finally {
+        setTimeout(()=>{ btn.disabled=false; btn.textContent=original; }, 1000);
+      }
+    }
+
+    /************************************************************************
+     * WIFI: scan list + submit (added)
+     ************************************************************************/
+    async function loadWiFiList() {
+      const sel = document.getElementById('ssidSelect');
+      sel.innerHTML = '<option>Memuat...</option>';
+      try {
+        const resp = await fetchWithTimeout('/wifi-scan', { timeout: 8000 });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const list = await resp.json(); // expect array of ssid strings or objects
+        sel.innerHTML = '';
+        if (!Array.isArray(list) || list.length === 0) {
+          sel.innerHTML = '<option value="">(Tidak ada jaringan)</option>';
+          return;
+        }
+        list.forEach(item => {
+          let ssid = (typeof item === 'string') ? item : (item.ssid || item.name || JSON.stringify(item));
+          const opt = document.createElement('option'); opt.value = ssid; opt.textContent = ssid;
+          sel.appendChild(opt);
+        });
+      } catch (err) {
+        console.error('Error loading WiFi list:', err);
+        sel.innerHTML = '<option value="">Gagal memuat</option>';
+        showToast('Gagal memuat SSID WiFi', 'error');
+      }
+    }
+
+    function togglePassword() {
+      const pf = document.getElementById('wifiPass');
+      pf.type = (pf.type === 'password') ? 'text' : 'password';
+    }
+
+    async function submitWiFiForm(evt) {
+      evt.preventDefault();
+      const form = document.getElementById('wifi-form');
+      const data = new FormData(form);
+      // extra UX
+      const btn = document.getElementById('saveWifiBtn');
+      const original = btn.textContent;
+      btn.disabled = true; btn.textContent = 'Menyimpan...';
+      try {
+        const resp = await fetchWithTimeout('/wifi-save', {
+          method: 'POST',
+          body: data,
+          timeout: 10000
+        });
+        if (!resp.ok) {
+          const txt = await resp.text().catch(()=>null);
+          throw new Error(txt || `HTTP ${resp.status}`);
+        }
+        const text = await resp.text().catch(()=>null);
+        showToast('Pengaturan WiFi dikirim. ESP akan mencoba konek...', 'success');
+        // Optionally, you might redirect to main or show message
+      } catch (err) {
+        console.error('Error saving wifi:', err);
+        showToast(`Gagal menyimpan WiFi: ${err.message || err}`, 'error');
+      } finally {
+        btn.disabled = false; btn.textContent = original;
+      }
+      return false;
+    }
+
+    /************************************************************************
+     * INIT
+     ************************************************************************/
+    document.addEventListener('visibilitychange', function() {
+      if (document.hidden) {
+        if (updateInterval) clearInterval(updateInterval);
+      } else {
+        startAutoRefresh();
+        updateStatus();
+      }
+    });
+
+    window.addEventListener('online', function() {
+      showToast('Koneksi internet pulih', 'success');
+      retryConnection();
+    });
+    window.addEventListener('offline', function() {
+      updateConnectionStatus(false);
+      showToast('Koneksi internet terputus', 'error');
+    });
+
+    document.addEventListener('DOMContentLoaded', function() {
+      console.log('Futsal Timer System v2.0 - Client initialized (merged)');
+      // start main data loop
+      updateStatus();
+      startAutoRefresh();
+      // also schedule periodic system info updates inside updateStatus
+      // ensure settings load when user navigates
+    });
+
+    // cleanup on unload
+    window.addEventListener('beforeunload', function() {
+      if (updateInterval) clearInterval(updateInterval);
+    });
+  </script>
+</body>
+</html>
